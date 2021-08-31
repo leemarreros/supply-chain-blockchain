@@ -1,0 +1,10 @@
+// migrating the appropriate contracts
+var ConsumerRole = artifacts.require("./ConsumerRole.sol");
+
+module.exports = async function (deployer) {
+  try {
+    await deployer.deploy(ConsumerRole);
+  } catch (error) {
+    console.log(error);
+  }
+};
