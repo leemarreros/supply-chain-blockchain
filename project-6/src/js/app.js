@@ -17,17 +17,86 @@ App = {
   retailerID: "0x0000000000000000000000000000000000000000",
   consumerID: "0x0000000000000000000000000000000000000000",
   IPFS: null,
+  buffer: null,
+  ImageUploadStatus: null,
+  imageReadyToDownload: false,
+  interval: null,
 
   init: async function () {
     App.readForm();
-    // set up IPFS
-    App.initIPFS();
     /// Setup access to blockchain
+    App.initIPFS();
+    App.ImageUploadStatus = document.getElementById("statusUploadImage");
+    App.ImageDownloadStatus = document.getElementById("statusDownloadImage");
     return await App.initWeb3();
   },
 
-  initIPFS: function () {
-    // const client = create();
+  initIPFS: async function () {
+    const { create } = window.IpfsHttpClient;
+    App.IPFS = create({
+      host: "ipfs.infura.io",
+      port: 5001,
+      protocol: "https",
+    });
+  },
+
+  convertToBuffer: async (reader) => {
+    //file is converted to a buffer for upload to IPFS
+    const bufferResult = await buffer.Buffer.from(reader.result);
+    App.upload(bufferResult);
+  },
+
+  upload: async function (data) {
+    const hash = await App.IPFS.add(data);
+    App.ImageUploadStatus.innerHTML = "Image uploaded to IPFS.";
+    console.log("Image uploaded to IPFS.", hash.path);
+
+    App.contracts.SupplyChain.deployed()
+      .then(function (instance) {
+        return instance.setPicture(hash.path, {
+          from: App.originFarmerID,
+          gas: 3000000,
+        });
+      })
+      .then(function (result) {
+        App.ImageUploadStatus.innerHTML = "Image saved in Smart Contract.";
+        console.log("Image saved in Smart Contract");
+        App.interval = setTimeout(() => {
+          App.imageReadyToDownload = true;
+        }, 3000);
+      })
+      .catch(function (err) {
+        console.log(err.message);
+      });
+
+    // return hash;
+  },
+
+  read: async function (event) {
+    event.preventDefault();
+    if (!App.imageReadyToDownload) {
+      App.ImageDownloadStatus.innerHTML =
+        "Image not ready for preview. Try in a few seconds...";
+      if (App.interval) clearInterval(App.interval);
+      return;
+    }
+    App.ImageDownloadStatus.innerHTML = "Downloading image...";
+    App.contracts.SupplyChain.deployed()
+      .then(async function (instance) {
+        return instance.hashPicture();
+      })
+      .then(function (result) {
+        const imageFromSC = document.getElementById("imageFromSC");
+        let url = `https://ipfs.io/ipfs/${result}`;
+        imageFromSC.src = url;
+        imageFromSC.onload = function () {
+          App.ImageDownloadStatus.innerHTML = "Image Downloaded.";
+        };
+      })
+      .catch(function (err) {
+        App.ImageDownloadStatus.innerHTML = "Something went wrong.";
+        console.log(err.message);
+      });
   },
 
   readForm: function () {
@@ -77,7 +146,7 @@ App = {
     // If no injected web3 instance is detected, fall back to Ganache
     // else {
     console.log("http providerr");
-    App.web3Provider = new Web3.providers.HttpProvider("http://localhost:8545");
+    App.web3Provider = new Web3.providers.HttpProvider("http://127.0.0.1:8545");
     await window.ethereum.enable();
     // }
 
@@ -98,7 +167,6 @@ App = {
       console.log("getMetaskID:", res);
       web3.eth.defaultAccount = res[0];
       const bal = web3.eth.getBalance(res[0]);
-      console.log("bal", bal.toString());
       App.originFarmerID = res[0];
       App.metamaskAccountID = res[0];
       App.distributorID = res[1];
@@ -122,7 +190,6 @@ App = {
       var SupplyChainArtifact = data;
       App.contracts.SupplyChain = TruffleContract(SupplyChainArtifact);
       App.contracts.SupplyChain.setProvider(App.web3Provider);
-
       App.fetchItemBufferOne();
       App.fetchItemBufferTwo();
       App.fetchEvents();
@@ -132,55 +199,62 @@ App = {
   },
 
   bindEvents: function () {
-    $(document).on("click", App.handleButtonClick);
-  },
+    $(".btn-harvest").on(
+      "click",
+      async (event) => await App.harvestItem(event)
+    );
+    $(".btn-process").on(
+      "click",
+      async (event) => await App.processItem(event)
+    );
+    $(".btn-pack").on("click", async (event) => await App.packItem(event));
+    $(".btn-forsale").on("click", async (event) => await App.sellItem(event));
+    $(".btn-buy").on("click", async (event) => await App.buyItem(event));
+    $(".btn-ship").on("click", async (event) => await App.shipItem(event));
+    $(".btn-receive").on(
+      "click",
+      async (event) => await App.receiveItem(event)
+    );
+    $(".btn-purchase").on(
+      "click",
+      async (event) => await App.purchaseItem(event)
+    );
+    $(".btn-fetchOne").on(
+      "click",
+      async (event) => await App.fetchItemBufferOne(event)
+    );
+    $(".btn-fetchTwo").on(
+      "click",
+      async (event) => await App.fetchItemBufferTwo(event)
+    );
+    $(".btn-readimage").on("click", async (event) => await App.read(event));
 
-  handleButtonClick: async function (event) {
-    event.preventDefault();
-
-    // App.getMetaskAccountID();
-
-    var processId = parseInt($(event.target).data("id"));
-    console.log("processId", processId);
-
-    switch (processId) {
-      case 1:
-        return await App.harvestItem(event);
-        break;
-      case 2:
-        return await App.processItem(event);
-        break;
-      case 3:
-        return await App.packItem(event);
-        break;
-      case 4:
-        return await App.sellItem(event);
-        break;
-      case 5:
-        return await App.buyItem(event);
-        break;
-      case 6:
-        return await App.shipItem(event);
-        break;
-      case 7:
-        return await App.receiveItem(event);
-        break;
-      case 8:
-        return await App.purchaseItem(event);
-        break;
-      case 9:
-        return await App.fetchItemBufferOne(event);
-        break;
-      case 10:
-        return await App.fetchItemBufferTwo(event);
-        break;
-    }
+    const fileElem = document.getElementById("uploadfile");
+    fileElem.addEventListener(
+      "change",
+      function () {
+        const fileList = this.files;
+        let reader = new window.FileReader();
+        reader.readAsArrayBuffer(fileList[0]);
+        reader.onloadend = () => App.convertToBuffer(reader);
+        App.ImageUploadStatus.innerHTML = "Image being upload...";
+      },
+      false
+    );
+    const buttonUpload = document.getElementsByClassName("btn-upload")[0];
+    buttonUpload.addEventListener(
+      "click",
+      function (event) {
+        if (fileElem) {
+          fileElem.click();
+        }
+      },
+      false
+    );
   },
 
   harvestItem: function (event) {
     event.preventDefault();
-    var processId = parseInt($(event.target).data("id"));
-    console.log(processId);
     App.contracts.SupplyChain.deployed()
       .then(function (instance) {
         console.log("upc", App.upc);
@@ -199,7 +273,7 @@ App = {
           App.originFarmLatitude,
           App.originFarmLongitude,
           App.productNotes,
-          { from: App.originFarmerID, gas: 3000000 }
+          { from: App.metamaskAccountID, gas: 3000000 }
         );
       })
       .then(function (result) {
@@ -213,7 +287,6 @@ App = {
 
   processItem: function (event) {
     event.preventDefault();
-    var processId = parseInt($(event.target).data("id"));
 
     App.contracts.SupplyChain.deployed()
       .then(function (instance) {
@@ -230,7 +303,6 @@ App = {
 
   packItem: function (event) {
     event.preventDefault();
-    var processId = parseInt($(event.target).data("id"));
 
     App.contracts.SupplyChain.deployed()
       .then(function (instance) {
@@ -247,7 +319,6 @@ App = {
 
   sellItem: function (event) {
     event.preventDefault();
-    var processId = parseInt($(event.target).data("id"));
 
     App.contracts.SupplyChain.deployed()
       .then(function (instance) {
@@ -268,13 +339,12 @@ App = {
 
   buyItem: function (event) {
     event.preventDefault();
-    var processId = parseInt($(event.target).data("id"));
 
     App.contracts.SupplyChain.deployed()
       .then(function (instance) {
         const walletValue = web3.toWei(3, "ether");
         return instance.buyItem(App.upc, {
-          from: App.distributorID,
+          from: App.metamaskAccountID,
           value: walletValue,
         });
       })
@@ -289,11 +359,10 @@ App = {
 
   shipItem: function (event) {
     event.preventDefault();
-    var processId = parseInt($(event.target).data("id"));
 
     App.contracts.SupplyChain.deployed()
       .then(function (instance) {
-        return instance.shipItem(App.upc, { from: App.distributorID });
+        return instance.shipItem(App.upc, { from: App.metamaskAccountID });
       })
       .then(function (result) {
         $("#ftc-item").text(result);
@@ -306,11 +375,10 @@ App = {
 
   receiveItem: function (event) {
     event.preventDefault();
-    var processId = parseInt($(event.target).data("id"));
 
     App.contracts.SupplyChain.deployed()
-      .then(function (instance) {
-        return instance.receiveItem(App.upc, { from: App.retailerID });
+      .then(async function (instance) {
+        return instance.receiveItem(App.upc, { from: App.metamaskAccountID });
       })
       .then(function (result) {
         $("#ftc-item").text(result);
@@ -323,11 +391,10 @@ App = {
 
   purchaseItem: function (event) {
     event.preventDefault();
-    var processId = parseInt($(event.target).data("id"));
 
     App.contracts.SupplyChain.deployed()
       .then(function (instance) {
-        return instance.purchaseItem(App.upc, { from: App.consumerID });
+        return instance.purchaseItem(App.upc, { from: App.metamaskAccountID });
       })
       .then(function (result) {
         $("#ftc-item").text(result);

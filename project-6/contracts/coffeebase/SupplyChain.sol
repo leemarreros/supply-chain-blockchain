@@ -1,4 +1,5 @@
 pragma solidity ^0.4.24;
+
 import "../coffeeaccesscontrol/ConsumerRole.sol";
 import "../coffeeaccesscontrol/DistributorRole.sol";
 import "../coffeeaccesscontrol/FarmerRole.sol";
@@ -19,6 +20,9 @@ contract SupplyChain is
 
     // Define a variable called 'sku' for Stock Keeping Unit (SKU)
     uint256 sku;
+
+    // IPFS hash of picture taken by farmer
+    string public hashPicture;
 
     // Define a public mapping 'items' that maps the UPC to an Item.
     mapping(uint256 => Item) items;
@@ -184,6 +188,7 @@ contract SupplyChain is
         }
     }
 
+    // FARMER
     // Define a function 'harvestItem' that allows a farmer to mark an item 'Harvested'
     function harvestItem(
         uint256 _upc,
@@ -193,7 +198,7 @@ contract SupplyChain is
         string _originFarmLatitude,
         string _originFarmLongitude,
         string _productNotes
-    ) public {
+    ) public onlyFarmer {
         // Add the new item as part of Harvest
         items[_upc].upc = _upc;
         items[_upc].sku = sku;
@@ -218,6 +223,7 @@ contract SupplyChain is
     // Call modifier to verify caller of this function
     function processItem(uint256 _upc)
         public
+        onlyFarmer
         harvested(_upc)
         verifyCaller(items[_upc].ownerID)
     {
@@ -234,6 +240,7 @@ contract SupplyChain is
     function packItem(uint256 _upc)
         public
         processed(_upc)
+        onlyFarmer
         verifyCaller(items[_upc].ownerID)
     {
         // Update the appropriate fields
@@ -249,6 +256,7 @@ contract SupplyChain is
     function sellItem(uint256 _upc, uint256 _price)
         public
         packed(_upc)
+        onlyFarmer
         verifyCaller(items[_upc].ownerID)
     {
         // Update the appropriate fields
@@ -269,6 +277,7 @@ contract SupplyChain is
         public
         payable
         forSale(_upc)
+        onlyDistributor
         paidEnough(items[_upc].productPrice)
         checkValue(_upc)
     {
@@ -283,7 +292,7 @@ contract SupplyChain is
         // Change ownerId to new owner
         items[_upc].ownerID = msg.sender;
         // Updates the price with additional markup
-        items[_upc].productPrice = items[_upc].productPrice * 110 / 100;
+        items[_upc].productPrice = (items[_upc].productPrice * 110) / 100;
         // emit the appropriate event
         emit Sold(_upc);
     }
@@ -296,6 +305,7 @@ contract SupplyChain is
     function shipItem(uint256 _upc)
         public
         sold(_upc)
+        onlyDistributor
         verifyCaller(items[_upc].ownerID)
     {
         // Update the appropriate fields
@@ -308,11 +318,7 @@ contract SupplyChain is
     // DONE Define a function 'receiveItem' that allows the retailer to mark an item 'Received'
     // DONE Use the above modifiers to check if the item is shipped
     // DONE Call modifier to check if upc has passed previous supply chain stage
-    function receiveItem(uint256 _upc)
-        public
-        shipped(_upc)
-    // Access Control List enforced by calling Smart Contract / DApp
-    {
+    function receiveItem(uint256 _upc) public shipped(_upc) onlyRetailer {
         // Update the appropriate fields - ownerID, retailerID, itemState, consumerID
         items[_upc].ownerID = msg.sender;
         items[_upc].retailerID = msg.sender;
@@ -326,11 +332,7 @@ contract SupplyChain is
     // Define a function 'purchaseItem' that allows the consumer to mark an item 'Purchased'
     // Use the above modifiers to check if the item is received
     // DONE Call modifier to check if upc has passed previous supply chain stage
-    function purchaseItem(uint256 _upc)
-        public
-        received(_upc)
-    // Access Control List enforced by calling Smart Contract / DApp
-    {
+    function purchaseItem(uint256 _upc) public received(_upc) onlyConsumer {
         // Update the appropriate fields - ownerID, consumerID, itemState
         items[_upc].ownerID = msg.sender;
         items[_upc].consumerID = msg.sender;
@@ -414,4 +416,9 @@ contract SupplyChain is
             consumerID
         );
     }
+
+    function setPicture(string hash) public {
+        hashPicture = hash;
+    }
+
 }

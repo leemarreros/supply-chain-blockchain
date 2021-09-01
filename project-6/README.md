@@ -17,6 +17,8 @@ I used two additional libraries:
 
 * dotenv - Since I didn't want to hard code my credentials of Infura. I used dotenv for injecting the credentials at compile time and also for not publishing in Github.
 * truffle-hdwallet-provider - This wallet help me to creat a HD wallet provider and connect to Infura, step require to connect to *rinkeby* network.
+* ipfs-http-client - Library used for saving an image to IPFS through Infura.
+* buffer - Require library for creating the appropriate form for saving an image in the cloud
 * Truffle v4.1.14 (core: 4.1.14)
 * Solidity v0.4.24 (solc-js)
 * node v.11.14.0
@@ -24,9 +26,7 @@ I used two additional libraries:
 
 **Project write-up - IPFS**
 
-IPFS was not used
-
-
+It was used to save an image given by the Farmer. Two additional functiones were created: upload and read. *Upload* is called by the Farmer to save an image to IPFS and then its hash value is saved in the smart Contract. Later on, the function *read* is used to retrieve the hash and create the url for Image element in the HTML.
 
 **General Write Up**
 
@@ -38,8 +38,6 @@ The Ownable contract is the one that includes all the other contracts. For that 
 
 
 All tests are passing correclty:
-
-
 
 Contract: SupplyChain
 
@@ -64,4 +62,5 @@ Contract: SupplyChain
   ✓ Testing smart contract function fetchItemBufferTwo() that allows anyone to fetch item details from blockchain (48ms)
 
  10 passing (3s)
+
 
